@@ -1,2 +1,163 @@
-#in#i# Nebula-Tiers-Ra
-This is Tier ranking site of nebula Tierlist 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Netheritepot Tierlist</title>
+<style>
+  body { font-family: Arial,sans-serif; background:#0d1117; color:#c9d1d9; text-align:center; padding:20px; }
+  h1 { color:#ffcc00; margin-bottom:20px; }
+
+  .search-wrap{display:flex;justify-content:center;gap:8px;margin-bottom:16px;}
+  .search-wrap input{width:240px;padding:8px;border-radius:6px;border:1px solid #30363d;background:#161b22;color:#c9d1d9;}
+  .search-wrap button{padding:8px 12px;border-radius:6px;border:none;background:#238636;color:white;cursor:pointer;}
+  .search-wrap button:hover{background:#2ea043;}
+
+  #search-result{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;}
+  .mini-card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:10px;width:240px;display:flex;flex-direction:column;align-items:center;gap:8px;}
+  .mini-card img.skin{width:64px;height:64px;border-radius:8px;border:2px solid #fff;object-fit:cover;}
+  .mini-card .region{color:#9aa;font-size:13px;}
+  .mini-card .name{font-weight:700;font-size:16px;}
+  .mini-card .tier-box{display:flex;align-items:center;gap:8px;background:#212526;padding:6px 10px;border-radius:8px;font-weight:700;}
+  .mini-card .tier-box img{width:22px;height:22px;}
+  .mini-card .namemc{color:#6f9bff;text-decoration:none;font-size:13px;}
+
+  .leaderboard{display:flex;gap:10px;max-width:1200px;margin:0 auto;overflow-x:auto;padding-bottom:20px;}
+  .tier-column{flex:1;min-width:180px;background:#161b22;border-radius:10px;padding:8px;}
+  .tier-column h2{text-align:center;color:#58a6ff;border-bottom:1px solid #30363d;padding-bottom:6px;margin-bottom:8px;}
+  .rows{display:flex;flex-direction:column;gap:6px;}
+  .player-row{display:flex;align-items:center;gap:8px;position:relative;overflow:hidden;cursor:pointer;border-radius:6px;background:#212526;padding:4px;}
+  .player-row .head{width:32px;height:32px;border-radius:6px;border:1px solid #fff;}
+  .player-row .name-wrap{display:flex;align-items:center;gap:6px;overflow:hidden;}
+  .player-row .player-name{font-weight:600;font-size:14px;white-space:nowrap;transition: transform 0.28s ease;}
+  .player-row .tierbox{position:absolute;right:-100%;top:0;height:100%;width:50%;background:rgba(0,0,0,0.75);display:flex;justify-content:center;align-items:center;font-weight:700;color:#fff;font-size:14px;border-radius:0 6px 6px 0;transition:right 0.28s ease;}
+  .player-row:hover .player-name{transform:translateX(-50%);}
+  .player-row:hover .tierbox{right:0;}
+
+  .controls{margin-top:10px;display:flex;justify-content:center;gap:10px;}
+  .controls button{padding:8px 12px;border-radius:6px;border:none;background:#238636;color:white;cursor:pointer;}
+  .controls button:hover{background:#2ea043;}
+  .small{font-size:12px;color:#9aa;margin-top:8px;}
+</style>
+</head>
+<body>
+
+<h1>Netheritepot Tierlist</h1>
+
+<div class="search-wrap">
+  <input id="search-input" placeholder="Search player...">
+  <button onclick="searchPlayer()">Search</button>
+</div>
+
+<div id="search-result"></div>
+<div class="leaderboard" id="leaderboard-container"></div>
+
+<div class="controls">
+  <button onclick="addPlayer()">Add / Update (admin)</button>
+  <button onclick="removePlayer()">Remove (admin)</button>
+</div>
+
+<div class="small">Admin key required to add/remove. Premium players use live skin (mc-heads).</div>
+
+<script>
+/* ADMIN KEY â€” CHANGED */
+const secretKey = "MITOX121";
+
+/* LOCAL STORAGE (FIREBASE REMOVED) */
+let players = JSON.parse(localStorage.getItem("players") || "[]");
+function savePlayers(){
+  localStorage.setItem("players", JSON.stringify(players));
+}
+
+const categories=["T1","T2","T3","T4","T5"];
+const categoryMap={
+  HT1:"T1",LT1:"T1",RHT1:"T1",RLT1:"T1",
+  HT2:"T2",LT2:"T2",RHT2:"T2",RLT2:"T2",
+  HT3:"T3",LT3:"T3",RHT3:"T3",RLT3:"T3",
+  HT4:"T4",LT4:"T4",
+  HT5:"T5",LT5:"T5"
+};
+
+function n(s){return (s||"").toLowerCase().trim();}
+
+function getHeadURL(name,size=32){
+  return `https://mc-heads.net/avatar/${encodeURIComponent(name)}?size=${size}&default=MHF_Steve&nocache=${Date.now()}`;
+}
+
+function findPlayerByNameOrAlias(q){
+  const s=n(q);
+  return players.find(p=>n(p.name)===s || (p.aliases||[]).some(a=>n(a)===s));
+}
+
+/* RENDER */
+function renderLeaderboard(){
+  const c=document.getElementById("leaderboard-container");
+  c.innerHTML="";
+  const cols={};
+
+  categories.forEach(cat=>{
+    const col=document.createElement("div");
+    col.className="tier-column";
+    col.innerHTML=`<h2>${cat}</h2><div class="rows"></div>`;
+    c.appendChild(col);
+    cols[cat]=col.querySelector(".rows");
+  });
+
+  players.forEach(p=>{
+    const cat=categoryMap[p.tier];
+    if(!cat) return;
+    const row=document.createElement("div");
+    row.className="player-row";
+    row.innerHTML=`
+      <img class="head" src="${p.skin}">
+      <div class="name-wrap"><div class="player-name">${p.name}</div></div>
+      <div class="tierbox">${p.region} | ${p.tier}</div>
+    `;
+    cols[cat].appendChild(row);
+  });
+}
+
+/* SEARCH */
+function searchPlayer(){
+  const q=document.getElementById("search-input").value.trim();
+  if(!q) return alert("Type a player name first.");
+  const r=document.getElementById("search-result");
+  r.innerHTML="";
+  const p=findPlayerByNameOrAlias(q);
+  if(!p) return alert("Player not found.");
+  r.innerHTML=`
+    <div class="mini-card">
+      <img class="skin" src="${p.skin}">
+      <div class="region">${p.region}</div>
+      <div class="name">${p.name}</div>
+      <div class="tier-box"><div>${p.tier}</div></div>
+    </div>`;
+}
+
+/* ADMIN */
+function addPlayer(){
+  if(prompt("Enter admin key:")!==secretKey) return alert("Unauthorized");
+  const name=prompt("IGN:");
+  if(!name) return;
+  const tier=prompt("Tier:","HT1");
+  const region=prompt("Region:","NA");
+  const p=findPlayerByNameOrAlias(name);
+  if(p){
+    p.tier=tier;p.region=region;
+  }else{
+    players.push({name,aliases:[],tier,region,skin:getHeadURL(name)});
+  }
+  savePlayers();renderLeaderboard();
+}
+
+function removePlayer(){
+  if(prompt("Enter admin key:")!==secretKey) return alert("Unauthorized");
+  const name=prompt("IGN:");
+  players=players.filter(p=>n(p.name)!==n(name));
+  savePlayers();renderLeaderboard();
+}
+
+renderLeaderboard();
+</script>
+</body>
+  </html>
