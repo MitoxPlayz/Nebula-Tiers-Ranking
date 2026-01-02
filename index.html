@@ -259,6 +259,160 @@ window.removePlayer = async () => {
 loadData();
 </script>
 </body>
+</html><div class="admin-bar">
+    <button class="admin-btn" onclick="addPlayer()">Update Database (Admin)</button>
+    <button class="admin-btn" onclick="removePlayer()">Remove Player</button>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js";
+import { getFirestore, collection, getDocs, setDoc, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js";
+
+const firebaseConfig = {
+    apiKey: "AIzaSyAakWRL3CsMmsIORMwqxVhrlOoSi8Hf2GQ",
+    authDomain: "mitox-f7ff0.firebaseapp.com",
+    projectId: "mitox-f7ff0",
+    storageBucket: "mitox-f7ff0.firebasestorage.app",
+    messagingSenderId: "197472832786",
+    appId: "1:197472832786:web:72b454c25d62ac046e37cb"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const playersRef = collection(db, "players");
+
+let players = [];
+let currentMode = "Overall";
+
+const gameModes = ["Vanilla", "Pot", "NethPot", "Smp", "Uhc", "Sword", "Axe", "Mace"];
+const iconLinks = {
+    Vanilla: "https://mctiers.com/tier_icons/vanilla.svg", Pot: "https://mctiers.com/tier_icons/pot.svg",
+    NethPot: "https://mctiers.com/tier_icons/nethop.svg", Smp: "https://mctiers.com/tier_icons/smp.svg",
+    Uhc: "https://mctiers.com/tier_icons/uhc.svg", Sword: "https://mctiers.com/tier_icons/sword.svg",
+    Axe: "https://mctiers.com/tier_icons/axe.svg", Mace: "https://mctiers.com/tier_icons/mace.svg"
+};
+
+// Calculation points (MCTiers accurate)
+const tierPoints = { "HT1": 100, "LT1": 85, "HT2": 70, "LT2": 60, "HT3": 50, "LT3": 40, "HT4": 30, "LT4": 20, "HT5": 10, "LT5": 5, "NONE": 0 };
+
+async function loadData() {
+    const snap = await getDocs(playersRef);
+    players = snap.docs.map(d => {
+        let data = d.data();
+        // Calculate dynamic overall total
+        data.total = gameModes.reduce((sum, m) => sum + (tierPoints[data[m]] || 0), 0);
+        return data;
+    });
+    render();
+}
+
+window.setMode = (mode) => {
+    currentMode = mode;
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+    render();
+}
+
+window.render = () => {
+    const query = document.getElementById("search").value.toLowerCase();
+    const filtered = players.filter(p => p.name.toLowerCase().includes(query));
+
+    if(currentMode === "Overall") {
+        document.getElementById("view-overall").style.display = "flex";
+        document.getElementById("view-grid").style.display = "none";
+        renderOverall(filtered);
+    } else {
+        document.getElementById("view-overall").style.display = "none";
+        document.getElementById("view-grid").style.display = "grid";
+        renderGrid(filtered);
+    }
+}
+
+function renderOverall(data) {
+    const cont = document.getElementById("view-overall");
+    cont.innerHTML = "";
+    data.sort((a,b) => b.total - a.total).forEach((p, i) => {
+        const row = document.createElement("div");
+        row.className = "player-row";
+        const rankClass = i < 3 ? `rank-${i+1}` : "";
+        row.innerHTML = `
+            <div class="rank-num ${rankClass}">${i+1}</div>
+            <img class="player-img" src="https://mc-heads.net/avatar/${p.name}/64">
+            <div class="player-main">
+                <span class="player-name">${p.name}</span>
+                <span class="player-pts">Combat Ranking (${p.total} points)</span>
+            </div>
+            <div class="region-badge">${p.region || 'NA'}</div>
+            <div class="mini-tier-box">
+                ${gameModes.map(m => `
+                    <div class="mini-item">
+                        <img src="${iconLinks[m]}" class="mini-icon">
+                        <span class="mini-val">${p[m] || 'NONE'}</span>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        cont.appendChild(row);
+    });
+}
+
+function renderGrid(data) {
+    const cont = document.getElementById("view-grid");
+    cont.innerHTML = "";
+    const tiers = ["T1", "T2", "T3", "T4", "T5"];
+    
+    tiers.forEach((t, idx) => {
+        const col = document.createElement("div");
+        col.className = "tier-column";
+        col.innerHTML = `<div class="tier-header t${idx+1}-h">Tier ${idx+1}</div>`;
+        
+        data.filter(p => (p[currentMode] || "").includes(t)).sort((a,b) => a.name.localeCompare(b.name)).forEach(p => {
+            const pr = document.createElement("div");
+            pr.className = "grid-player";
+            pr.innerHTML = `<img src="https://mc-heads.net/avatar/${p.name}/32"> <span>${p.name}</span>`;
+            col.appendChild(pr);
+        });
+        cont.appendChild(col);
+    });
+}
+
+window.addPlayer = async () => {
+    const key = prompt("Admin Key:");
+    if(key !== "MITOX121") return alert("Access Denied");
+    
+    const name = prompt("Enter Minecraft IGN:");
+    if(!name) return;
+    
+    const region = prompt("Region (NA/EU/AS/SA):", "NA").toUpperCase();
+    const update = { name, region };
+    
+    alert("Enter tiers as HT1, LT1, HT2, etc. Leave blank for NONE.");
+    for (const m of gameModes) {
+        let val = prompt(`${m} Tier:`) || "NONE";
+        update[m] = val.toUpperCase();
+    }
+
+    try {
+        await setDoc(doc(db, "players", name.toLowerCase()), update);
+        alert("Player saved successfully!");
+        loadData();
+    } catch(e) {
+        alert("Error saving: " + e.message);
+    }
+}
+
+window.removePlayer = async () => {
+    if(prompt("Admin Key:") !== "MITOX121") return;
+    const name = prompt("Enter IGN to delete:");
+    if(name) {
+        await deleteDoc(doc(db, "players", name.toLowerCase()));
+        loadData();
+    }
+}
+
+loadData();
+</script>
+</body>
 </html>    if(!cat) return;
     const row=document.createElement("div");
     row.className="player-row";
